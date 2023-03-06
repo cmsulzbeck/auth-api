@@ -6,6 +6,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
 
+# TODO modularizar a aplicação
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -35,9 +37,11 @@ def login():
     user = User.query.filter_by(username=username).first()
     print(f"User found: {user.username} and password {user.password}")
 
+    # TODO implementar hashing de senha
     if not user or user.password != password:
         return jsonify({'message': "Invalid credentials"}), 401
     
+    # TODO implementar codificação de JWT
     # token = jwt.JWT.encode({
     #     'sub': user.id,
     #     'iat': datetime.datetime.utcnow(),
