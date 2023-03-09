@@ -4,15 +4,12 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import jwt
-import datetime
+from datetime import datetime, timedelta, timezone
+import json
 
 # TODO modularizar a aplicação
 
 app = Flask(__name__)
-
-@app.route("/")
-def hello_world():
-    return "<p>Hello, World!</p>"
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auth_api.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -23,10 +20,14 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(60), nullable=False)
-    date_craeted = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    date_created = db.Column(db.DateTime, default=datetime.utcnow)
+    session_token = db.Column(db.String(255), unique=True, default=None)
 
     def __repr__(self):
-        return f"User('{self.username}', '{self.email}')"
+        return f"User('{self.username}', '{self.email}', '{self.password}', '{self.session_token}')"
+
+    def toJson(self):
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -42,16 +43,18 @@ def login():
         return jsonify({'message': "Invalid credentials"}), 401
     
     # TODO implementar codificação de JWT
-    # token = jwt.JWT.encode({
-    #     'sub': user.id,
-    #     'iat': datetime.datetime.utcnow(),
-    #     'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30),
-    # }, 'my-secret-key')    
-# token = jwt.encode({
-    #     'sub': user.id,
-    #     'iat': datetime.datetime.utcnow(),
-    #     'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30),
-    # }, 'my-secret-key')
+    message = {
+        'iat': datetime.now(timezone.utc),
+        'exp': datetime.now(timezone.utc) + timedelta(hours=1),
+        'data': {'user_id': user.id, 'username': user.username}
+    }
+    signing_key = 'my_secret_key'
+    token = jwt.encode(message, signing_key, algorithm='HS256')
+
+    
+    user.session_token = token
+    db.session.add(user)
+    db.session.commit()
 
     return jsonify({'message': 'User authenticated!'})
 
@@ -79,6 +82,23 @@ def register():
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': 'Unable to create user'}), 500
+
+@app.route('/logoff', methods=['POST'])
+def logoff():
+    session_token = request.headers.get('Authorization')
+    user = User.query.filter_by(session_token=session_token).first()
+
+    user.session_token = None
+    db.session.commit()
+
+    return jsonify({'message': 'Logged off successfully'}), 200
+
+@app.route('/users', methods=['GET'])
+def getUsers():
+    users = User.query.filter_by().all()
+    print(f"Users found: f{users}")
+
+    return jsonify({'message': 'Retrieved Users information!'})
     
 if __name__ == '__main__':
     with app.app_context():
