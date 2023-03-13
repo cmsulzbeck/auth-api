@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import jwt
+import bcrypt
 from datetime import datetime, timedelta, timezone
-import json
 
 # TODO modularizar a aplicação
 
@@ -26,9 +26,6 @@ class User(db.Model):
     def __repr__(self):
         return f"User('{self.username}', '{self.email}', '{self.password}', '{self.session_token}')"
 
-    def toJson(self):
-        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
-
 @app.route('/login', methods=['POST'])
 def login():
     username = request.json.get('username')
@@ -37,12 +34,12 @@ def login():
 
     user = User.query.filter_by(username=username).first()
     print(f"User found: {user.username} and password {user.password}")
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    print(f"Hashed Password: {hashed_password}")
 
-    # TODO implementar hashing de senha
-    if not user or user.password != password:
+    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password):
         return jsonify({'message': "Invalid credentials"}), 401
     
-    # TODO implementar codificação de JWT
     message = {
         'iat': datetime.now(timezone.utc),
         'exp': datetime.now(timezone.utc) + timedelta(hours=1),
@@ -65,16 +62,17 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
     if not all([username, email, password]):
         return jsonify({'message': 'Missing data'}), 400
     
-    new_user = User(username=username, email=email, password=password)
+    new_user = User(username=username, email=email, password=hashed_password)
 
     try:
         db.session.add(new_user)
         db.session.commit()
-        print(f"Saving user {username} and password {password}")
+        print(f"Saving user {username} and password {hashed_password}")
         return jsonify({'message': 'User created successfully'}), 201
     except IntegrityError:
         db.session.rollback()
@@ -86,6 +84,9 @@ def register():
 @app.route('/logoff', methods=['POST'])
 def logoff():
     session_token = request.headers.get('Authorization')
+    if not session_token:
+        return jsonify({'message': 'No session_token provided'}), 400
+    
     user = User.query.filter_by(session_token=session_token).first()
 
     user.session_token = None
