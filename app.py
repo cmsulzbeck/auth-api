@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
-from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta, timezone
 
 import jwt
 import bcrypt
-from datetime import datetime, timedelta, timezone
+import io, os, sys, config
 
 # TODO modularizar a aplicação
 
@@ -24,18 +24,20 @@ class User(db.Model):
     session_token = db.Column(db.String(255), unique=True, default=None)
 
     def __repr__(self):
-        return f"User('{self.username}', '{self.email}', '{self.password}', '{self.session_token}')"
+        return f"User('{self.username}', '{self.email}', '{self.session_token}')"
+    
+cfg = config.ConfigError('config.cfg')
 
 @app.route('/login', methods=['POST'])
 def login():
     username = request.json.get('username')
     password = request.json.get('password')
-    print(f"Entering {username} and password {password}")
+    # print(f"Entering {username} and password {password}")
 
     user = User.query.filter_by(username=username).first()
-    print(f"User found: {user.username} and password {user.password}")
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    print(f"Hashed Password: {hashed_password}")
+    # print(f"User found: {user.username} and password {user.password}")
+    # hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    # print(f"Hashed Password: {hashed_password}")
 
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password):
         return jsonify({'message': "Invalid credentials"}), 401
@@ -45,15 +47,14 @@ def login():
         'exp': datetime.now(timezone.utc) + timedelta(hours=1),
         'data': {'user_id': user.id, 'username': user.username}
     }
-    signing_key = 'my_secret_key'
-    token = jwt.encode(message, signing_key, algorithm='HS256')
-
+    signing_key = cfg['secret_key']
+    token = jwt.encode(message, signing_key.encode('utf-8'), algorithm='HS256')
     
     user.session_token = token
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({'message': 'User authenticated!'})
+    return jsonify({'token': token})
 
 @app.route('/register', methods=['POST'])
 def register():
