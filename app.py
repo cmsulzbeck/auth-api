@@ -48,6 +48,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         #fields to expose
         fields = ("email", "username", "session_token", "date_created")
         model = User
+        load_instance = True
     
 cfg = config.ConfigError('config.cfg')
 
